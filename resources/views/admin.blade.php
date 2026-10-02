@@ -156,19 +156,16 @@
     </main>
 
 <script>
-    // 1. AMBIL DATA DARI SERVER (Via Cookie Session, TIDAK BISA DIBLOKIR BROWSER)
+    // 1. AMBIL DATA DARI SERVER
     const serverUser = @json($user ?? null);
 
-    // 2. FUNGSI AMAN UNTUK BACA LOCALSTORAGE (Tidak akan crash jika diblokir)
+    // 2. FUNGSI AMAN UNTUK BACA LOCALSTORAGE
     function getSafeLocalStorage(key, fallback) {
-        try {
-            return localStorage.getItem(key) || fallback;
-        } catch (e) {
-            return fallback; // Jika diblokir Tracking Prevention, kembalikan fallback
-        }
+        try { return localStorage.getItem(key) || fallback; } 
+        catch (e) { return fallback; }
     }
 
-    // 3. DEKLARASI VARIABEL (Prioritas: Server > LocalStorage > Default)
+    // 3. DEKLARASI VARIABEL
     const userId = serverUser ? (serverUser.user_id || serverUser.id) : getSafeLocalStorage('userId', '');
     const username = serverUser ? serverUser.username : getSafeLocalStorage('username', 'Admin');
     const userEmail = serverUser ? serverUser.email : getSafeLocalStorage('userEmail', 'admin@philips.com');
@@ -179,24 +176,21 @@
         window.location.href = '/login';
     }
 
-    // 5. UPDATE UI HEADER LANGSUNG (Anti Undefined)
+    // 5. UPDATE UI HEADER
     document.getElementById('header-user-name').innerText = username;
     document.getElementById('header-user-email').innerText = userEmail;
-
     lucide.createIcons();
 
     // --- LOGIKA PROFILE AVATAR ---
     function getInitials(name) {
         return name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
     }
-
     function getAvatarColor(name) {
         const colors = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4','#3b82f6'];
         let hash = 0;
         for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
         return colors[Math.abs(hash) % colors.length];
     }
-
     const avatarEl = document.getElementById('header-avatar');
     avatarEl.innerText = getInitials(username);
     avatarEl.style.backgroundColor = getAvatarColor(username);
@@ -204,7 +198,6 @@
     function toggleProfileMenu() {
         document.getElementById('profile-dropdown').classList.toggle('hidden');
     }
-
     document.addEventListener('click', (event) => {
         const dropdown = document.getElementById('profile-dropdown');
         const button = dropdown.previousElementSibling;
@@ -220,7 +213,6 @@
         document.getElementById('prof_pwd').value = ''; 
         document.getElementById('profile_modal').classList.remove('hidden');
     }
-
     function closeProfileModal() {
         document.getElementById('profile_modal').classList.add('hidden');
     }
@@ -254,166 +246,164 @@
             });
 
             if (response.ok) {
-                Swal.fire('Success', 'Profile updated successfully!', 'success');
-                
-                // Update UI Langsung
+                Swal.fire({ title: 'Success', text: 'Profile updated successfully!', icon: 'success' });
                 document.getElementById('header-user-name').innerText = payload.username;
                 document.getElementById('header-user-email').innerText = payload.email;
                 document.getElementById('header-avatar').innerText = getInitials(payload.username);
                 document.getElementById('header-avatar').style.backgroundColor = getAvatarColor(payload.username);
-                
-                // Coba update localStorage (Aman karena ada try-catch)
                 try {
                     localStorage.setItem('username', payload.username);
                     localStorage.setItem('userEmail', payload.email);
                 } catch (err) {}
-
                 closeProfileModal();
             } else {
                 const err = await response.json().catch(() => ({}));
-                Swal.fire('Error', err.message || 'Failed to update profile', 'error');
+                Swal.fire({ title: 'Error', text: err.message || 'Failed to update profile', icon: 'error' });
             }
         } catch (error) {
-            Swal.fire('Error', 'Network connection failed.', 'error');
+            Swal.fire({ title: 'Error', text: 'Network connection failed.', icon: 'error' });
         }
-        
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
 
-        // Navigasi Menu SPA
-        function switchMenu(target) {
-            const titles = {
-                'dashboard': 'Dashboard Overview', 'labs': 'Lab Management',
-                'users': 'User Management', 'devices': 'Device Management', 'alerts': 'Alert Management'
-            };
-            document.getElementById('page-title').innerText = titles[target];
+    // --- NAVIGASI MENU ---
+    function switchMenu(target) {
+        const titles = {
+            'dashboard': 'Dashboard Overview', 'labs': 'Lab Management',
+            'users': 'User Management', 'devices': 'Device Management', 'alerts': 'Alert Management'
+        };
+        document.getElementById('page-title').innerText = titles[target];
 
-            // Update class button
-            document.querySelectorAll('.menu-btn').forEach(btn => {
-                if (btn.getAttribute('data-target') === target) {
-                    btn.className = "menu-btn p-2 rounded-lg transition-all text-blue-600 bg-blue-50 shadow-[4px_0_0_0_rgba(59,130,246,1)]";
-                } else {
-                    btn.className = "menu-btn p-2 rounded-lg transition-all text-gray-400 hover:text-blue-500";
-                }
-            });
-
-            // Update content view
-            document.querySelectorAll('.content-view').forEach(view => view.classList.add('hidden'));
-            document.getElementById(`view-${target}`).classList.remove('hidden');
-        }
-
-        // Fetch Data Khusus Dashboard
-        async function fetchAdminDashboard() {
-            try {
-                const [sensorRes, alertRes, deviceRes] = await Promise.all([
-                    fetch('/api/sensors/latest'), fetch('/api/alerts'), fetch('/api/devices')
-                ]);
-                const sensors = await sensorRes.json();
-                const alerts = await alertRes.json();
-                const devices = await deviceRes.json();
-
-                renderAdminDashboard(sensors, alerts, devices);
-            } catch (err) {
-                console.error("Fetch admin error", err);
-            }
-        }
-
-        function renderAdminDashboard(sensors, alerts, devices) {
-            const online = sensors.filter(s => s.current_status === 'online').length;
-            const criticals = alerts.filter(a => a.level === 'critical').length;
-            let highestTemp = 0; let highestLab = "N/A";
-            if(sensors.length > 0) {
-                const sorted = [...sensors].sort((a, b) => (b.max_temp || 0) - (a.max_temp || 0));
-                highestTemp = sorted[0].max_temp || "--";
-                highestLab = sorted[0].lab_name || "--";
-            }
-            const validCal = devices.filter(d => (d.calStatus || '').toLowerCase() === 'valid').length;
-
-            // Render Stat Cards
-            document.getElementById('admin-stat-cards').innerHTML = `
-                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                    <span class="text-sm font-bold text-gray-500">Total Devices</span>
-                    <span class="text-3xl font-black mt-2 text-gray-900">${sensors.length}</span>
-                    <span class="text-xs font-bold text-green-600 mt-2 bg-green-50 w-max px-2 py-1 rounded">${online} online</span>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                    <span class="text-sm font-bold text-gray-500">Active Alerts</span>
-                    <span class="text-3xl font-black mt-2 text-gray-900">${alerts.length}</span>
-                    <span class="text-xs font-bold text-red-600 mt-2 bg-red-50 w-max px-2 py-1 rounded">${criticals} High priority</span>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                    <span class="text-sm font-bold text-gray-500">Highest Temp</span>
-                    <span class="text-3xl font-black mt-2 text-gray-900">${highestTemp}°C</span>
-                    <span class="text-xs font-bold text-gray-500 mt-2">${highestLab}</span>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                    <span class="text-sm font-bold text-gray-500">Calibrated Device</span>
-                    <span class="text-3xl font-black mt-2 text-gray-900">${devices.length}</span>
-                    <span class="text-xs font-bold text-green-600 mt-2 bg-green-50 w-max px-2 py-1 rounded">${validCal} valid</span>
-                </div>
-            `;
-
-           // Render Alerts
-            const alertBox = document.getElementById('admin-recent-alerts');
-            if (alerts.length === 0) {
-                alertBox.innerHTML = `<p class="text-gray-500 italic text-sm">No active alerts right now.</p>`;
+        document.querySelectorAll('.menu-btn').forEach(btn => {
+            if (btn.getAttribute('data-target') === target) {
+                btn.className = "menu-btn p-2 rounded-lg transition-all text-blue-600 bg-blue-50 shadow-[4px_0_0_0_rgba(59,130,246,1)]";
             } else {
-                alertBox.innerHTML = alerts.slice(0, 3).map(alert => {
-                    const val = parseFloat(alert.triggered_value || 0);
-                    
-                    // LOGIKA BARU: Jika parameter status ATAU nilainya 0, otomatis dianggap Offline/Connection Loss
-                    const isOffline = alert.parameter === 'status' || val === 0;
-                    
-                    // Offline dipaksa menjadi CRITICAL (Merah) agar selaras dengan Alert Management
-                    const isHigh = alert.level === 'critical' || isOffline; 
-                    
-                    // LOGIKA FORMAT TANGGAL: DD MMM YYYY, HH:MM
-                    let timeStr = '';
-                    if (alert.triggered_at) {
-                        const d = new Date(alert.triggered_at);
-                        const day = String(d.getDate()).padStart(2, '0');
-                        const month = d.toLocaleString('en-US', { month: 'short' }); 
-                        const year = d.getFullYear();
-                        const hours = String(d.getHours()).padStart(2, '0');
-                        const minutes = String(d.getMinutes()).padStart(2, '0');
-                        timeStr = `${day} ${month} ${year}, ${hours}:${minutes}`; 
-                    }
-                    
-                    // Pewarnaan Badge (Hanya Merah/CRITICAL atau Kuning/MEDIUM)
-                    const bgCol = isHigh ? 'border-red-500 bg-red-50' : 'border-amber-500 bg-amber-50';
-                    const badgeCol = isHigh ? 'bg-red-500' : 'bg-amber-500';
-                    const badgeTxt = isHigh ? 'CRITICAL' : 'MEDIUM';
-                    
-                    // Penyesuaian Teks agar seragam dengan Alert Management
-                    const title = isOffline ? 'Connection Loss' : `${alert.parameter.charAt(0).toUpperCase() + alert.parameter.slice(1)} Alert`;
-                    const detail = isOffline ? `Device in ${alert.location || 'Unknown'} is offline or lost connection.` : `${alert.location} - exceeded threshold (${val})`;
-
-                    return `
-                    <div class="flex justify-between p-4 border-l-4 rounded-r-lg shadow-sm ${bgCol}">
-                        <div class="flex flex-col gap-1">
-                            <div class="flex items-center gap-2">
-                                <strong class="text-gray-900">${title}</strong>
-                                <span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold text-white ${badgeCol}">${badgeTxt}</span>
-                            </div>
-                            <p class="text-sm text-gray-600">${detail}</p>
-                            <span class="text-[11px] text-gray-400">${timeStr}</span>
-                        </div>
-                        <div class="flex flex-col gap-2 justify-center">
-                            <button class="text-xs border border-gray-300 bg-white px-3 py-1.5 rounded hover:bg-gray-50 font-medium shadow-sm transition">Acknowledge</button>
-                        </div>
-                    </div>`;
-                }).join('');
+                btn.className = "menu-btn p-2 rounded-lg transition-all text-gray-400 hover:text-blue-500";
             }
-        }
+        });
 
-        function handleLogout() {
-    localStorage.clear();
+        document.querySelectorAll('.content-view').forEach(view => view.classList.add('hidden'));
+        document.getElementById(`view-${target}`).classList.remove('hidden');
+    }
+
+    // --- FETCH DASHBOARD (VERSI AMAN DARI SYNTAX ERROR) ---
+    async function fetchAdminDashboard() {
+        try {
+            const [sensorRes, alertRes, deviceRes] = await Promise.all([
+                fetch('/api/sensors/latest'), 
+                fetch('/api/alerts'), 
+                fetch('/api/devices')
+            ]);
+            
+            const sensors = await sensorRes.json();
+            const alerts = await alertRes.json();
+            const devices = await deviceRes.json();
+
+            const safeSensors = Array.isArray(sensors) ? sensors : [];
+            const safeAlerts = Array.isArray(alerts) ? alerts : [];
+            const safeDevices = Array.isArray(devices) ? devices : [];
+
+            renderAdminDashboard(safeSensors, safeAlerts, safeDevices);
+        } catch (err) {
+            console.error("Fetch admin error:", err);
+            renderAdminDashboard([], [], []);
+        }
+    }
+
+    function renderAdminDashboard(sensors, alerts, devices) {
+        const online = sensors.filter(s => s.current_status === 'online').length;
+        const criticals = alerts.filter(a => a.level === 'critical').length;
+        
+        let highestTemp = "--"; 
+        let highestLab = "N/A";
+        
+        if (sensors.length > 0) {
+            const sorted = [...sensors].sort((a, b) => (b.max_temp || 0) - (a.max_temp || 0));
+            highestTemp = sorted[0].max_temp || "--";
+            highestLab = sorted[0].lab_name || "--";
+        }
+        
+        const validCal = devices.filter(d => (d.calStatus || '').toLowerCase() === 'valid').length;
+
+        document.getElementById('admin-stat-cards').innerHTML = `
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                <span class="text-sm font-bold text-gray-500">Total Devices</span>
+                <span class="text-3xl font-black mt-2 text-gray-900">${sensors.length}</span>
+                <span class="text-xs font-bold text-green-600 mt-2 bg-green-50 w-max px-2 py-1 rounded">${online} online</span>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                <span class="text-sm font-bold text-gray-500">Active Alerts</span>
+                <span class="text-3xl font-black mt-2 text-gray-900">${alerts.length}</span>
+                <span class="text-xs font-bold text-red-600 mt-2 bg-red-50 w-max px-2 py-1 rounded">${criticals} High priority</span>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                <span class="text-sm font-bold text-gray-500">Highest Temp</span>
+                <span class="text-3xl font-black mt-2 text-gray-900">${highestTemp}°C</span>
+                <span class="text-xs font-bold text-gray-500 mt-2">${highestLab}</span>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                <span class="text-sm font-bold text-gray-500">Calibrated Devices</span>
+                <span class="text-3xl font-black mt-2 text-gray-900">${devices.length}</span>
+                <span class="text-xs font-bold text-green-600 mt-2 bg-green-50 w-max px-2 py-1 rounded">${validCal} valid</span>
+            </div>
+        `;
+
+        const alertBox = document.getElementById('admin-recent-alerts');
+        if (alerts.length === 0) {
+            alertBox.innerHTML = `<p class="text-gray-500 italic text-sm">No active alerts right now.</p>`;
+        } else {
+            alertBox.innerHTML = alerts.slice(0, 3).map(alert => {
+                const val = parseFloat(alert.triggered_value || 0);
+                const isOffline = alert.parameter === 'status' || val === 0 || alert.parameter === 'connection';
+                const isHigh = alert.level === 'critical' || isOffline; 
+                
+                let timeStr = '';
+                if (alert.triggered_at) {
+                    const d = new Date(alert.triggered_at);
+                    timeStr = d.toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                }
+                
+                const bgCol = isHigh ? 'border-red-500 bg-red-50' : 'border-amber-500 bg-amber-50';
+                const badgeCol = isHigh ? 'bg-red-500' : 'bg-amber-500';
+                const badgeTxt = isHigh ? 'CRITICAL' : 'MEDIUM';
+                
+                const title = isOffline ? 'Connection Loss' : `${alert.parameter.charAt(0).toUpperCase() + alert.parameter.slice(1)} Alert`;
+                const detail = isOffline ? `Device in ${alert.location || 'Unknown'} is offline.` : `${alert.location} - exceeded threshold (${val})`;
+
+                return `
+                <div class="flex justify-between p-4 border-l-4 rounded-r-lg shadow-sm ${bgCol}">
+                    <div class="flex flex-col gap-1">
+                        <div class="flex items-center gap-2">
+                            <strong class="text-gray-900">${title}</strong>
+                            <span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold text-white ${badgeCol}">${badgeTxt}</span>
+                        </div>
+                        <p class="text-sm text-gray-600">${detail}</p>
+                        <span class="text-[11px] text-gray-400">${timeStr}</span>
+                    </div>
+                    <div class="flex flex-col gap-2 justify-center">
+                        <button onclick="switchMenu('alerts')" class="text-xs border border-gray-300 bg-white px-3 py-1.5 rounded hover:bg-gray-50 font-medium shadow-sm transition">View Details</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    }
+
+function handleLogout() {
+    // Hapus data sesi SAJA. JANGAN gunakan localStorage.clear()
+    // agar 'remembered_email' tetap tersimpan untuk login berikutnya.
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userEmail');
+    
+    // Redirect ke halaman login
     window.location.href = '/login';
 }
 
-        fetchAdminDashboard();
-        setInterval(fetchAdminDashboard, 30000);
-    </script>
+    // Jalankan saat load
+    fetchAdminDashboard();
+    setInterval(fetchAdminDashboard, 30000);
+</script>
 </body>
 </html>

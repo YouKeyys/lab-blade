@@ -14,14 +14,13 @@
         
         <!-- Left Side (Gambar) -->
         <div class="hidden md:block md:flex-1 relative overflow-hidden">
-            <!-- Pastikan path gambarmu sesuai, misalnya assets/images/callabzz.jpg -->
             <img src="{{ asset('assets/images/callabzz.jpg') }}" alt="Lab View" class="absolute inset-0 w-full h-full object-cover">
             <div class="absolute inset-0 bg-gradient-to-br from-black/20 to-[#295F43]/40"></div>
         </div>
 
         <!-- Right Side (Form) -->
         <div class="flex-1 p-10 flex flex-col justify-center bg-white relative">
-            <h2 class="text-2xl font-bold text-[#1a3a32] mb-8 text-center">Welcome to Login Page</h2>
+            <h2 class="text-2xl font-bold text-[#1a3a32] mb-8 text-center">Welcome Back</h2>
             
             <form onsubmit="handleLogin(event)" class="space-y-5">
                 <div class="flex flex-col gap-2">
@@ -41,8 +40,16 @@
                     </div>
                 </div>
 
+                <!-- REMEMBER ME CHECKBOX -->
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" id="remember_me" class="w-4 h-4 text-[#42745d] border-gray-300 rounded focus:ring-[#42745d] cursor-pointer">
+                        <span class="text-sm text-gray-600">Remember me</span>
+                    </label>
+                </div>
+
                 <button type="submit" id="btn-login" 
-                    class="w-40 mx-auto block py-3 mt-4 bg-[#42745d] text-white font-semibold rounded-md hover:bg-[#355e4b] transition-colors shadow-lg active:scale-95">
+                    class="w-full md:w-40 mx-auto block py-3 mt-4 bg-[#42745d] text-white font-semibold rounded-md hover:bg-[#355e4b] transition-colors shadow-lg active:scale-95">
                     Log In
                 </button>
             </form>
@@ -56,6 +63,31 @@
 
     <script>
         lucide.createIcons();
+
+        // 1. AUTO-FILL & AUTO-REDIRECT SAAT HALAMAN DIBUKA
+        document.addEventListener('DOMContentLoaded', () => {
+            // Cek apakah user sebenarnya masih punya sesi aktif (mencegah akses ke halaman login)
+            const savedRole = localStorage.getItem('userRole');
+            if (savedRole === 'admin') {
+                window.location.href = '/admin';
+                return;
+            } else if (savedRole === 'supervisor') {
+                window.location.href = '/supervisor';
+                return;
+            }
+
+            // Cek apakah ada email yang disimpan (Remember Me)
+            const savedEmail = localStorage.getItem('remembered_email');
+            if (savedEmail) {
+                document.getElementById('email').value = savedEmail;
+                document.getElementById('remember_me').checked = true;
+                
+                // Fokuskan kursor ke password setelah UI selesai dimuat
+                setTimeout(() => {
+                    document.getElementById('password').focus();
+                }, 100);
+            }
+        });
 
         function togglePassword() {
             const pwd = document.getElementById('password');
@@ -73,11 +105,13 @@
         async function handleLogin(e) {
             e.preventDefault();
             const btn = document.getElementById('btn-login');
+            const originalText = btn.innerText;
             btn.innerText = 'Checking...';
             btn.disabled = true;
 
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const rememberMe = document.getElementById('remember_me').checked;
 
             try {
                 const response = await fetch('/api/login', {
@@ -88,38 +122,42 @@
                 
                 const data = await response.json();
 
-                
-// if (response.ok) {
-//     // Simpan sesi di localStorage
-//     localStorage.setItem('userRole', data.user.role);
-//     localStorage.setItem('username', data.user.username);
-    
-//     // TAMBAHKAN BARIS INI: Simpan email agar tidak undefined
-//     localStorage.setItem('userEmail', data.user.email); 
-    
-//     // Gunakan id atau user_id (fallback aman)
-//     localStorage.setItem('userId', data.user.id || data.user.user_id);
-if (response.ok) {
-    localStorage.setItem('userRole', data.user.role);
-    localStorage.setItem('username', data.user.username);
-    localStorage.setItem('userId', data.user.id);
-    localStorage.setItem('userEmail', data.user.email);
-    
-    Swal.fire({ icon: 'success', title: 'Login Success!', timer: 1500, showConfirmButton: false }).then(() => {
-        if (data.user.role === 'admin') {
-            window.location.href = '/admin';
-        } else {
-            window.location.href = '/supervisor';
-        }
-    });
-} else {
-                    Swal.fire('Login Failed', data.message || 'Invalid credentials', 'error');
-                    btn.innerText = 'Log In';
+                if (response.ok) {
+                    // Simpan data sesi
+                    localStorage.setItem('userRole', data.user.role);
+                    localStorage.setItem('username', data.user.username);
+                    localStorage.setItem('userId', data.user.id);
+                    localStorage.setItem('userEmail', data.user.email);
+                    
+                    // LOGIKA REMEMBER ME
+                    if (rememberMe) {
+                        localStorage.setItem('remembered_email', email);
+                    } else {
+                        localStorage.removeItem('remembered_email');
+                    }
+                    
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'Login Successful!', 
+                        text: `Welcome back, ${data.user.username}`,
+                        timer: 1500, 
+                        showConfirmButton: false 
+                    }).then(() => {
+                        if (data.user.role === 'admin') {
+                            window.location.href = '/admin';
+                        } else {
+                            window.location.href = '/supervisor';
+                        }
+                    });
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Login Failed', text: data.message || 'Invalid email or password.' });
+                    btn.innerText = originalText;
                     btn.disabled = false;
                 }
             } catch (error) {
-                Swal.fire('Error', 'Could not connect to the server.', 'error');
-                btn.innerText = 'Log In';
+                console.error(error);
+                Swal.fire({ icon: 'error', title: 'Connection Error', text: 'Could not connect to the server.' });
+                btn.innerText = originalText;
                 btn.disabled = false;
             }
         }

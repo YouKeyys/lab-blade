@@ -262,4 +262,61 @@ class DeviceController extends Controller
             return response()->json(['message' => 'Failed to fetch device history logs', 'error' => $e->getMessage()], 500);
         }
     }
+    // ==========================================
+    // DELETE DEVICE
+    // ==========================================
+    public function destroy($id)
+    {
+        try {
+            $role = request()->input('userRole') ?? request()->input('role') ?? '';
+            
+            if (strtolower($role) !== 'admin') {
+                return response()->json([
+                    'message' => 'Only Admin can delete devices.'
+                ], 403);
+            }
+
+            // Cek apakah device ada
+            $device = DB::table('devices')->where('device_id', $id)->first();
+            if (!$device) {
+                return response()->json([
+                    'message' => 'Device not found.'
+                ], 404);
+            }
+
+            // Hapus semua data terkait terlebih dahulu (untuk menghindari FK constraint)
+            // Hapus dari device_readings
+            DB::table('device_readings')->where('device_id', $id)->delete();
+            
+            // Hapus dari device_logs
+            DB::table('device_logs')->where('device_id', $id)->delete();
+            
+            // Hapus dari calibration_logs
+            DB::table('calibration_logs')->where('device_id', $id)->delete();
+            
+            // Hapus dari alert_rules
+            DB::table('alert_rules')->where('device_id', $id)->delete();
+            
+            // Hapus dari alerts (active alerts)
+            DB::table('alerts')->where('device_id', $id)->delete();
+            
+            // Hapus dari alert_history
+            DB::table('alert_history')->where('device_id', $id)->delete();
+
+            // Baru hapus device itu sendiri
+            DB::table('devices')->where('device_id', $id)->delete();
+            
+            return response()->json([
+                'message' => 'Device successfully deleted!'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to delete device',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }
+

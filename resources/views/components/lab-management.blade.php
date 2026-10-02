@@ -417,25 +417,51 @@
         }
     }
 
-    function lab_delete(id, name) {
+     function lab_delete(id, name) {
         Swal.fire({ 
             title: 'Delete Lab?', 
-            html: `Are you sure you want to remove <strong>${lab_escapeHtml(name)}</strong>?<br><span class="text-sm text-gray-500">This action cannot be undone.</span>`, 
+            html: `Are you sure you want to permanently remove <strong>${lab_escapeHtml(name)}</strong>?<br><span class="text-sm text-gray-500">This action cannot be undone.</span>`, 
             icon: 'warning', 
             showCancelButton: true, 
-            confirmButtonColor: '#E11D48',
-            confirmButtonText: 'Yes, delete'
-        }).then(async (res) => {
-            if(res.isConfirmed) {
+            confirmButtonColor: '#dc2626', // Red-600
+            cancelButtonColor: '#6b7280', // Gray-500
+            confirmButtonText: 'Yes, delete it'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
                 try {
-                    const response = await fetch(`/api/labs/${id}`, { method: 'DELETE' });
+                    // Kirim userRole sebagai query parameter agar pasti terbaca oleh Laravel di request DELETE
+                    const userRole = localStorage.getItem('userRole') || 'admin';
+                    const response = await fetch(`/api/labs/${id}?userRole=${userRole}`, { 
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    const data = await response.json();
+                    
                     if (response.ok) {
                         lab_fetchLabs();
-                        lab_showToast(`${name} has been deleted`, 'success');
+                        lab_showToast('Lab deleted successfully.', 'success');
+                    } else if (response.status === 409) {
+                        // Tampilkan alert khusus yang jelas jika ada device yang tersangkut
+                        Swal.fire({
+                            title: 'Deletion Blocked',
+                            html: `<p class="text-gray-700 text-sm">${data.message}</p>`,
+                            icon: 'error',
+                            confirmButtonColor: '#3b82f6',
+                            confirmButtonText: 'Understood'
+                        });
+                    } else if (response.status === 403) {
+                        Swal.fire({
+                            title: 'Access Denied',
+                            text: data.message || 'You do not have permission to perform this action.',
+                            icon: 'error',
+                            confirmButtonColor: '#3b82f6'
+                        });
                     } else {
-                        lab_showToast('Failed to delete lab.', 'error');
+                        lab_showToast(data.message || 'Failed to delete lab.', 'error');
                     }
                 } catch (error) {
+                    console.error(error);
                     lab_showToast('Network error. Please try again.', 'error');
                 }
             }

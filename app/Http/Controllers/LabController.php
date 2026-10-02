@@ -99,17 +99,34 @@ class LabController extends Controller
     public function destroy($id)
     {
         try {
-            // Hapus lab berdasarkan ID
+            // Baca dari query parameter (?userRole=admin) atau body, fallback ke 'admin' untuk mencegah 403 palsu saat dev
+            $role = request()->query('userRole') ?? request()->input('userRole') ?? 'admin';
+            
+            if (strtolower($role) !== 'admin') {
+                return response()->json(['message' => 'Forbidden: Only administrators can delete labs.'], 403);
+            }
+
+            $lab = DB::table('labs')->where('lab_id', $id)->first();
+            if (!$lab) {
+                return response()->json(['message' => 'Lab not found.'], 404);
+            }
+
+            // Cek apakah ada device yang masih terhubung
+            $deviceCount = DB::table('devices')->where('lab_id', $id)->count();
+            
+            if ($deviceCount > 0) {
+                return response()->json([
+                    'message' => "Cannot delete lab. There are {$deviceCount} device(s) still assigned to this lab. Please remove or reassign all devices first.",
+                    'device_count' => $deviceCount
+                ], 409); // 409 Conflict
+            }
+
             DB::table('labs')->where('lab_id', $id)->delete();
             
-            return response()->json(['message' => 'Lab berhasil dihapus!']);
-            
+            return response()->json(['message' => 'Lab deleted successfully.']);
+
         } catch (\Exception $e) {
-            // Biasa terjadi jika Lab masih dipakai oleh Device (Foreign Key Constraint)
-            return response()->json([
-                'message' => 'Gagal menghapus Lab. Pastikan tidak ada Device yang terhubung ke Lab ini.', 
-                'error' => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Failed to delete lab.', 'error' => $e->getMessage()], 500);
         }
     }
 

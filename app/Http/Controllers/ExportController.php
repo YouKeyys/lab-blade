@@ -171,13 +171,16 @@ class ExportController extends Controller
             
             $fileName = "Control_Form_{$safeLabName}_{$fileSuffix}.xlsx";
 
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment;filename="'. $fileName .'"');
-            header('Cache-Control: max-age=0');
+$writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
 
-            $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
-            $writer->save('php://output');
-            exit;
+            // Hapus raw header() dan gunakan Stream Download bawaan Laravel
+            return response()->streamDownload(function () use ($writer) {
+                if (ob_get_length()) ob_end_clean(); // Opsional sebagai keamanan ekstra
+                $writer->save('php://output');
+            }, $fileName, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'max-age=0',
+            ]);
 
         // 2. Ubah \Exception menjadi \Throwable agar Fatal Error tertangkap!
         } catch (\Throwable $e) {

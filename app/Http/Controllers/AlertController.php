@@ -21,7 +21,9 @@ class AlertController extends Controller
                     a.level,
                     a.status,
                     a.rule_id as ruleId,
-                    a.last_reminder_sent_at,  -- <--- BARIS INI HARUS ADA
+                    a.last_reminder_sent_at,
+                    a.ack_remarks,   -- <--- TAMBAHKAN
+                    a.res_remarks,   -- <--- TAMBAHKAN
                     CONCAT(r.operator, ' ', r.threshold_value) as threshold
                 FROM alerts a
                 JOIN devices d ON a.device_id = d.device_id
@@ -37,21 +39,19 @@ class AlertController extends Controller
         }
     }
 
-    // UPDATE STATUS (ACKNOWLEDGE & PEMINDAHAN KE HISTORY)
-     // UPDATE STATUS (ACKNOWLEDGE & PEMINDAHAN KE HISTORY)
     public function updateStatus(Request $request, $id)
     {
         try {
             $status = $request->input('status');
             $userId = $request->input('userId');
-            $remarks = $request->input('remarks', null); // <-- TAMBAHKAN INI
+            $remarks = $request->input('remarks', null); 
 
             if ($status === 'Acknowledged') {
                 DB::table('alerts')->where('alert_id', $id)->update([
                     'status' => $status,
                     'acknowledged_at' => DB::raw('GETDATE()'),
                     'acknowledged_by' => $userId,
-                    'remarks' => $remarks // <-- SIMPAN REMARKS
+                    'ack_remarks' => $remarks // <--- SIMPAN KHUSUS DI ACK_REMARKS
                 ]);
                 return response()->json(['message' => 'Alert Acknowledged']);
             }
@@ -61,11 +61,8 @@ class AlertController extends Controller
                 if (!$alert) return response()->json(['message' => 'Alert not found'], 404);
 
                 DB::transaction(function () use ($alert, $id, $userId, $remarks) {
-                    // Jika remarks baru kosong, gunakan remarks lama dari tabel alerts (jika ada)
-                    $finalRemarks = !empty($remarks) ? $remarks : ($alert->remarks ?? null);
-
                     DB::table('alert_history')->insert([
-                        'alert_id' => $alert->alert_id ?? $alert->id,
+                        'alert_id' => $alert->alert_id,
                         'device_id' => $alert->device_id,
                         'rule_id' => $alert->rule_id ?? 0,
                         'parameter' => $alert->parameter,
@@ -75,21 +72,25 @@ class AlertController extends Controller
                         'end_time' => DB::raw('GETDATE()'),
                         'ack_by' => $alert->acknowledged_by ?? null,
                         'resolved_by' => $userId,
-                        'remarks' => $finalRemarks // <-- SIMPAN REMARKS KE HISTORY
+                        'ack_remarks' => $alert->ack_remarks ?? null, // <--- PINDAHKAN DARI ALERTS
+                        'res_remarks' => $remarks ?? null              // <--- SIMPAN REMARKS RESOLVE BARU
                     ]);
 
+                    // Hapus dari tabel aktif
                     DB::table('alerts')->where('alert_id', $id)->delete();
                 });
 
                 return response()->json(['message' => 'Alert Resolved & Archived']);
             }
+
+            return response()->json(['message' => 'Invalid status'], 400);
+
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to update alert', 'error' => $e->getMessage()], 500);
         }
     }
 
 
-    // GET ALERT HISTORY
     public function history()
     {
         try {
@@ -107,7 +108,8 @@ class AlertController extends Controller
                     ISNULL(u1.username, 'System') as ackBy,
                     ISNULL(u2.username, 'System') as resBy,
                     DATEDIFF(minute, h.start_time, h.end_time) as durationMins,
-                    h.remarks -- <-- TAMBAHKAN INI
+                    h.ack_remarks,   -- <--- PASTIKAN INI ADA
+                    h.res_remarks    -- <--- PASTIKAN INI ADA
                 FROM alert_history h
                 JOIN devices d ON h.device_id = d.device_id
                 JOIN labs l ON d.lab_id = l.lab_id
@@ -126,6 +128,7 @@ class AlertController extends Controller
 
             return response()->json($formatted);
         } catch (\Exception $e) {
+            \Log::error('History fetch error: ' . $e->getMessage()); // Cek log Laravel jika masih error
             return response()->json(['message' => 'Failed to fetch history', 'error' => $e->getMessage()], 500);
         }
     }

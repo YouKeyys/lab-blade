@@ -3,37 +3,55 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB; // Memanggil library Database Laravel
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SensorController extends Controller
 {
     public function getLatest()
     {
         try {
-            // Sama persis dengan query SQL Server di Node.js kemarin
+            // PERBAIKAN: Menggunakan 'd.status' bukan 'd.connection_status'
             $query = "
                 SELECT 
-                    l.lab_id, l.lab_name,
+                    l.lab_id, 
+                    l.lab_name,
                     (SELECT TOP 1 d.status FROM devices d WHERE d.lab_id = l.lab_id ORDER BY d.last_seen DESC) as current_status,
-                    (SELECT TOP 1 d.last_seen FROM devices d WHERE d.lab_id = l.lab_id) as last_seen, 
+                    (SELECT TOP 1 d.last_seen FROM devices d WHERE d.lab_id = l.lab_id ORDER BY d.last_seen DESC) as last_seen, 
                     (SELECT TOP 1 dr.temperature FROM device_readings dr JOIN devices d ON dr.device_id = d.device_id WHERE d.lab_id = l.lab_id ORDER BY dr.timestamp DESC) as current_temp,
                     (SELECT TOP 1 dr.humidity FROM device_readings dr JOIN devices d ON dr.device_id = d.device_id WHERE d.lab_id = l.lab_id ORDER BY dr.timestamp DESC) as current_hum,
-                    MAX(dr_all.temperature) as max_temp, MIN(dr_all.temperature) as min_temp,
-                    MAX(dr_all.humidity) as max_hum, MIN(dr_all.humidity) as min_hum
+                    MAX(dr_all.temperature) as max_temp, 
+                    MIN(dr_all.temperature) as min_temp,
+                    MAX(dr_all.humidity) as max_hum, 
+                    MIN(dr_all.humidity) as min_hum
                 FROM labs l
                 LEFT JOIN devices d_all ON l.lab_id = d_all.lab_id
                 LEFT JOIN device_readings dr_all ON d_all.device_id = dr_all.device_id
                 GROUP BY l.lab_id, l.lab_name
             ";
 
-            // Eksekusi query
             $result = DB::select($query);
+            
+            // Logika deteksi stale data (offline jika > 5 menit tidak ada data)
+            foreach ($result as $row) {
+                if ($row->last_seen) {
+                    $lastSeenTime = strtotime($row->last_seen);
+                    $now = time();
+                    $diffInMinutes = ($now - $lastSeenTime) / 60;
 
-            // Return sebagai JSON (Sama seperti res.json() di Express)
+                    if ($diffInMinutes > 5) {
+                        $row->current_status = 'offline';
+                        $row->current_temp = null;
+                        $row->current_hum = null;
+                    }
+                }
+            }
+
             return response()->json($result);
 
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Sensor getLatest error: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage(), 'message' => 'Failed to fetch sensor data'], 500);
         }
     }
 
@@ -50,10 +68,22 @@ class SensorController extends Controller
             $bucketMin = 10;
             $bindings = ['labName' => $labName];
 
-            if ($range === '1h') { $timeFilter = "AND dr.timestamp >= DATEADD(hour, -1, GETDATE())"; $bucketMin = 1; }
-            else if ($range === '24h') { $timeFilter = "AND dr.timestamp >= DATEADD(hour, -24, GETDATE())"; $bucketMin = 10; }
-            else if ($range === '7d') { $timeFilter = "AND dr.timestamp >= DATEADD(day, -7, GETDATE())"; $bucketMin = 60; }
-            else if ($range === '30d') { $timeFilter = "AND dr.timestamp >= DATEADD(day, -30, GETDATE())"; $bucketMin = 360; }
+            if ($range === '1h') { 
+                $timeFilter = "AND dr.timestamp >= DATEADD(hour, -1, GETDATE())"; 
+                $bucketMin = 1; 
+            }
+            else if ($range === '24h') { 
+                $timeFilter = "AND dr.timestamp >= DATEADD(hour, -24, GETDATE())"; 
+                $bucketMin = 10; 
+            }
+            else if ($range === '7d') { 
+                $timeFilter = "AND dr.timestamp >= DATEADD(day, -7, GETDATE())"; 
+                $bucketMin = 60; 
+            }
+            else if ($range === '30d') { 
+                $timeFilter = "AND dr.timestamp >= DATEADD(day, -30, GETDATE())"; 
+                $bucketMin = 360; 
+            }
             else if ($range === 'custom' && $start && $end) {
                 $timeFilter = "AND dr.timestamp BETWEEN :startDate AND :endDate";
                 $bindings['startDate'] = $start;
@@ -63,7 +93,6 @@ class SensorController extends Controller
                 $topClause = "TOP 150";
             }
 
-            // Memasukkan $bucketMin secara aman ke dalam string query SQL
             $bucketMin = (int)$bucketMin;
             
             $query = "
@@ -84,6 +113,7 @@ class SensorController extends Controller
             return response()->json($result);
 
         } catch (\Exception $e) {
+            Log::error('Sensor history error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

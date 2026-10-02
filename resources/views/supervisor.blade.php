@@ -381,10 +381,17 @@
             }
         }
 
-        function handleLogout() {
-            localStorage.clear();
-            window.location.href = '/login';
-        }
+function handleLogout() {
+    // Hapus data sesi SAJA. JANGAN gunakan localStorage.clear()
+    // agar 'remembered_email' tetap tersimpan untuk login berikutnya.
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userEmail');
+    
+    // Redirect ke halaman login
+    window.location.href = '/login';
+}
 
         // Jalankan saat load
         fetchSupDashboard();

@@ -483,8 +483,14 @@
         document.getElementById('alt_modal_title').innerText = `${type} Alert?`;
         document.getElementById('alt_btn_execute').innerText = `Yes, ${type}`;
         
-        // ✅ Kosongkan textarea saat modal dibuka
         document.getElementById('alt_remarks').value = ''; 
+        
+        const remarkInput = document.getElementById('alt_remarks');
+        if (type === 'acknowledge') {
+            remarkInput.placeholder = "E.g., 'Sedang mengecek sensor', 'Tim maintenance telah diberitahu'";
+        } else {
+            remarkInput.placeholder = "E.g., 'Sensor telah diganti', 'Suhu sudah normal', 'False alarm akibat kalibrasi'";
+        }
         
         alt_previousFocus = document.activeElement;
         document.getElementById('alt_confirm_modal').classList.remove('hidden');
@@ -613,95 +619,130 @@
         alt_handleHistSearch('');
     }
 
-    function alt_renderHistory() {
-        const tbody = document.getElementById('alt_history_body');
-        const mobile = document.getElementById('alt_hist_mobile_cards');
-        let filtered = alt_getHistFilteredData();
-        
-        document.getElementById('alt_hist_showing_info').textContent = `${filtered.length} record${filtered.length !== 1 ? 's' : ''}${alt_histSearchQuery ? ' found' : ''}`;
+function alt_renderHistory() {
+    const tbody = document.getElementById('alt_history_body');
+    const mobile = document.getElementById('alt_hist_mobile_cards');
+    let filtered = alt_getHistFilteredData();
+    
+    document.getElementById('alt_hist_showing_info').textContent = `${filtered.length} record${filtered.length !== 1 ? 's' : ''}${alt_histSearchQuery ? ' found' : ''}`;
 
-        if (filtered.length === 0) {
-            const emptyHTML = `<div class="flex flex-col items-center justify-center py-12 px-4 text-center"><div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4"><i data-lucide="file-text" class="w-8 h-8 text-blue-300"></i></div><p class="text-gray-700 font-semibold mb-1">${alt_histSearchQuery ? 'No records match your search' : 'No alert history found'}</p><p class="text-gray-500 text-sm mb-4">${alt_histSearchQuery ? 'Try adjusting your search terms.' : 'Historical data will appear here once alerts are resolved.'}</p></div>`;
-            tbody.innerHTML = `<tr><td colspan="9">${emptyHTML}</td></tr>`;
-            mobile.innerHTML = emptyHTML;
-            document.getElementById('alt_hist_pagination').classList.add('hidden');
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            return;
-        }
-
-        const paginatedData = alt_getHistPaginatedData(filtered);
-        const totalPages = alt_getHistTotalPages(filtered);
-
-        tbody.innerHTML = paginatedData.map((item, index) => {
-            const isOffline = item.peak === 0;
-            const remarkHtml = item.remarks 
-                ? `<div class="text-[11px] text-gray-500 italic mt-1 bg-gray-50 p-1.5 rounded border border-gray-100 flex items-start gap-1">
-                     <i data-lucide="file-text" class="w-3 h-3 mt-0.5 flex-shrink-0"></i>
-                     <span>${alt_escapeHtml(item.remarks)}</span>
-                   </div>` 
-                : '';
-
-            let lvlStyle = 'bg-gray-100 text-gray-700 border-gray-200';
-            let dot = 'bg-gray-500';
-            if (isOffline) {
-                lvlStyle = 'bg-red-100 text-red-700 border-red-300 shadow-[inset_0_0_8px_rgba(220,38,38,0.2)]';
-                dot = 'bg-red-500';
-            } else if (item.level === 'critical') {
-                lvlStyle = 'bg-red-100 text-red-700 border-red-200'; dot = 'bg-red-500';
-            } else if (item.level === 'warning') {
-                lvlStyle = 'bg-amber-100 text-amber-700 border-amber-200'; dot = 'bg-amber-500';
-            }
-            let paramIcon = alt_getIcon(item.parameter, isOffline);
-
-            return `<tr class="transition-colors duration-200 hover:bg-blue-100/40 ${index % 2 === 0 ? 'bg-white' : 'bg-[#EFF6FF]'}">
-                <td class="p-4 border-b border-blue-100 text-center font-medium text-gray-500 text-sm">${index + 1}</td>
-                <td class="p-4 border-b border-blue-100 whitespace-nowrap"><div class="flex flex-col"><span class="font-bold text-gray-800 text-sm">${alt_escapeHtml(item.start)}</span><span class="text-xs text-gray-500 mt-0.5">End: ${alt_escapeHtml(item.end)}</span></div></td>
-                <td class="p-4 border-b border-blue-100"><div class="flex flex-col"><span class="font-bold text-gray-900 text-sm">${alt_escapeHtml(item.deviceId)}</span><span class="text-xs text-gray-500 mt-0.5">${alt_escapeHtml(item.location || '-')}</span></div></td>
-                <td class="p-4 border-b border-blue-100"><div class="flex items-center gap-2 font-medium text-gray-700 text-sm">${paramIcon} <span class="capitalize ${isOffline ? 'text-red-600 font-bold' : ''}">${alt_escapeHtml(isOffline ? 'Connection Loss' : item.parameter)}</span></div></td>
-                <td class="p-4 border-b border-blue-100"><div class="flex flex-col"><span class="font-bold text-base ${isOffline ? 'text-red-500' : 'text-gray-900'}">${isOffline ? 'OFFLINE' : `${item.peak}${item.parameter === 'humidity' ? '%' : '°C'}`}</span>${!isOffline ? `<span class="text-xs text-gray-400 mt-0.5">Threshold: ${alt_escapeHtml(item.threshold)}</span>` : ''}</div></td>
-                <td class="p-4 border-b border-blue-100 text-center"><span class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide flex items-center justify-center gap-1 w-fit mx-auto border ${lvlStyle}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${isOffline ? 'CRITICAL' : item.level}</span></td>
-                <td class="p-4 border-b border-blue-100 text-gray-600 font-medium text-sm">${item.ackBy === 'System' ? '<span class="text-gray-400 italic">N/A</span>' : alt_escapeHtml(item.ackBy)}</td>
-                <td class="p-4 border-b border-blue-100 text-gray-600 font-medium text-sm">${item.resBy === 'System' ? '<span class="text-gray-400 italic">N/A</span>' : alt_escapeHtml(item.resBy)}${remarkHtml}</td>
-                <td class="p-4 border-b border-blue-100 text-center font-bold text-blue-700 bg-blue-50/50 text-sm">${alt_escapeHtml(item.duration)}</td>
-            </tr>`;
-        }).join('');
-
-        mobile.innerHTML = paginatedData.map((item, index) => {
-            const isOffline = item.peak === 0;
-            let lvlStyle = 'bg-gray-100 text-gray-700 border-gray-200';
-            let dot = 'bg-gray-500';
-            if (isOffline) {
-                lvlStyle = 'bg-red-100 text-red-700 border-red-300';
-                dot = 'bg-red-500';
-            } else if (item.level === 'critical') {
-                lvlStyle = 'bg-red-100 text-red-700 border-red-200'; dot = 'bg-red-500';
-            } else if (item.level === 'warning') {
-                lvlStyle = 'bg-amber-100 text-amber-700 border-amber-200'; dot = 'bg-amber-500';
-            }
-            let paramIcon = alt_getIcon(item.parameter, isOffline);
-
-            return `<div class="p-4">
-                <div class="flex items-start justify-between mb-2">
-                    <div class="flex items-center gap-2">${paramIcon}<span class="font-bold text-gray-900 text-sm">${alt_escapeHtml(item.deviceId)}</span></div>
-                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide flex items-center gap-1 border ${lvlStyle}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${isOffline ? 'CRITICAL' : item.level}</span>
-                </div>
-                <div class="text-xs text-gray-500 mb-2">${alt_escapeHtml(item.location || '-')} • ${alt_escapeHtml(item.duration)}</div>
-                <div class="flex items-center justify-between mb-3">
-                    <div><div class="text-xs text-gray-500 uppercase font-bold">Parameter</div><div class="text-sm font-medium text-gray-800 capitalize">${alt_escapeHtml(isOffline ? 'Connection Loss' : item.parameter)}</div></div>
-                    <div class="text-right"><div class="text-xs text-gray-500 uppercase font-bold">Peak</div><div class="text-base font-bold ${isOffline ? 'text-red-500' : 'text-gray-900'}">${isOffline ? 'OFFLINE' : `${item.peak}${item.parameter === 'humidity' ? '%' : '°C'}`}</div></div>
-                </div>
-                <div class="text-xs text-gray-500 mb-1">Start: <span class="font-medium text-gray-700">${alt_escapeHtml(item.start)}</span></div>
-                <div class="text-xs text-gray-500 mb-3">End: <span class="font-medium text-gray-700">${alt_escapeHtml(item.end)}</span></div>
-                <div class="flex justify-between text-xs border-t border-gray-100 pt-2">
-                    <span>Ack: <span class="font-medium text-gray-700">${item.ackBy === 'System' ? 'N/A' : alt_escapeHtml(item.ackBy)}</span></span>
-                    <span>Res: <span class="font-medium text-gray-700">${item.resBy === 'System' ? 'N/A' : alt_escapeHtml(item.resBy)}</span></span>
-                </div>
-            </div>`;
-        }).join('');
-
+    if (filtered.length === 0) {
+        const emptyHTML = `<div class="flex flex-col items-center justify-center py-12 px-4 text-center"><div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4"><i data-lucide="file-text" class="w-8 h-8 text-blue-300"></i></div><p class="text-gray-700 font-semibold mb-1">${alt_histSearchQuery ? 'No records match your search' : 'No alert history found'}</p><p class="text-gray-500 text-sm mb-4">${alt_histSearchQuery ? 'Try adjusting your search terms.' : 'Historical data will appear here once alerts are resolved.'}</p></div>`;
+        tbody.innerHTML = `<tr><td colspan="9">${emptyHTML}</td></tr>`;
+        mobile.innerHTML = emptyHTML;
+        document.getElementById('alt_hist_pagination').classList.add('hidden');
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        alt_renderHistPagination(filtered.length, totalPages);
+        return;
     }
+
+    const paginatedData = alt_getHistPaginatedData(filtered);
+    const totalPages = alt_getHistTotalPages(filtered);
+
+    tbody.innerHTML = paginatedData.map((item, index) => {
+        const isOffline = item.peak === 0;
+        
+        // ✅ FIX: Render ack_remarks dan res_remarks terpisah di kolom masing-masing
+        const ackRemarkHtml = item.ack_remarks 
+            ? `<div class="text-[11px] text-gray-600 mt-1.5 bg-blue-50 p-2 rounded border border-blue-100 flex items-start gap-1.5">
+                 <i data-lucide="message-circle" class="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500"></i>
+                 <span class="text-gray-700">${alt_escapeHtml(item.ack_remarks)}</span>
+               </div>` 
+            : '';
+            
+        const resRemarkHtml = item.res_remarks 
+            ? `<div class="text-[11px] text-gray-600 mt-1.5 bg-green-50 p-2 rounded border border-green-100 flex items-start gap-1.5">
+                 <i data-lucide="check-circle-2" class="w-3 h-3 mt-0.5 flex-shrink-0 text-green-600"></i>
+                 <span class="text-gray-700">${alt_escapeHtml(item.res_remarks)}</span>
+               </div>` 
+            : '';
+
+        let lvlStyle = 'bg-gray-100 text-gray-700 border-gray-200';
+        let dot = 'bg-gray-500';
+        if (isOffline) {
+            lvlStyle = 'bg-red-100 text-red-700 border-red-300 shadow-[inset_0_0_8px_rgba(220,38,38,0.2)]';
+            dot = 'bg-red-500';
+        } else if (item.level === 'critical') {
+            lvlStyle = 'bg-red-100 text-red-700 border-red-200'; 
+            dot = 'bg-red-500';
+        } else if (item.level === 'warning') {
+            lvlStyle = 'bg-amber-100 text-amber-700 border-amber-200'; 
+            dot = 'bg-amber-500';
+        }
+        let paramIcon = alt_getIcon(item.parameter, isOffline);
+
+        return `<tr class="transition-colors duration-200 hover:bg-blue-100/40 ${index % 2 === 0 ? 'bg-white' : 'bg-[#EFF6FF]'}">
+            <td class="p-4 border-b border-blue-100 text-center font-medium text-gray-500 text-sm align-top">${index + 1}</td>
+            <td class="p-4 border-b border-blue-100 whitespace-nowrap align-top"><div class="flex flex-col"><span class="font-bold text-gray-800 text-sm">${alt_escapeHtml(item.start)}</span><span class="text-xs text-gray-500 mt-0.5">End: ${alt_escapeHtml(item.end)}</span></div></td>
+            <td class="p-4 border-b border-blue-100 align-top"><div class="flex flex-col"><span class="font-bold text-gray-900 text-sm">${alt_escapeHtml(item.deviceId)}</span><span class="text-xs text-gray-500 mt-0.5">${alt_escapeHtml(item.location || '-')}</span></div></td>
+            <td class="p-4 border-b border-blue-100 align-top"><div class="flex items-center gap-2 font-medium text-gray-700 text-sm">${paramIcon} <span class="capitalize ${isOffline ? 'text-red-600 font-bold' : ''}">${alt_escapeHtml(isOffline ? 'Connection Loss' : item.parameter)}</span></div></td>
+            <td class="p-4 border-b border-blue-100 align-top"><div class="flex flex-col"><span class="font-bold text-base ${isOffline ? 'text-red-500' : 'text-gray-900'}">${isOffline ? 'OFFLINE' : `${item.peak}${item.parameter === 'humidity' ? '%' : '°C'}`}</span>${!isOffline ? `<span class="text-xs text-gray-400 mt-0.5">Threshold: ${alt_escapeHtml(item.threshold)}</span>` : ''}</div></td>
+            <td class="p-4 border-b border-blue-100 text-center align-top"><span class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide flex items-center justify-center gap-1 w-fit mx-auto border ${lvlStyle}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${isOffline ? 'CRITICAL' : item.level}</span></td>
+            <td class="p-4 border-b border-blue-100 align-top">
+                <div class="font-medium text-gray-700 text-sm">${item.ackBy === 'System' ? '<span class="text-gray-400 italic">N/A</span>' : alt_escapeHtml(item.ackBy)}</div>
+                ${ackRemarkHtml}
+            </td>
+            <td class="p-4 border-b border-blue-100 align-top">
+                <div class="font-medium text-gray-700 text-sm">${item.resBy === 'System' ? '<span class="text-gray-400 italic">N/A</span>' : alt_escapeHtml(item.resBy)}</div>
+                ${resRemarkHtml}
+            </td>
+            <td class="p-4 border-b border-blue-100 text-center align-top"><span class="font-bold text-blue-700 bg-blue-50/50 px-2 py-1 rounded text-sm">${alt_escapeHtml(item.duration)}</span></td>
+        </tr>`;
+    }).join('');
+
+    // Mobile cards juga perlu diupdate
+    mobile.innerHTML = paginatedData.map((item, index) => {
+        const isOffline = item.peak === 0;
+        
+        const ackRemarkHtml = item.ack_remarks 
+            ? `<div class="text-[11px] mt-2 bg-blue-50 p-2 rounded border border-blue-100 flex items-start gap-1.5">
+                 <i data-lucide="message-circle" class="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500"></i>
+                 <span class="text-gray-700">${alt_escapeHtml(item.ack_remarks)}</span>
+               </div>` 
+            : '';
+            
+        const resRemarkHtml = item.res_remarks 
+            ? `<div class="text-[11px] mt-2 bg-green-50 p-2 rounded border border-green-100 flex items-start gap-1.5">
+                 <i data-lucide="check-circle-2" class="w-3 h-3 mt-0.5 flex-shrink-0 text-green-600"></i>
+                 <span class="text-gray-700">${alt_escapeHtml(item.res_remarks)}</span>
+               </div>` 
+            : '';
+        
+        let lvlStyle = 'bg-gray-100 text-gray-700 border-gray-200';
+        let dot = 'bg-gray-500';
+        if (isOffline) {
+            lvlStyle = 'bg-red-100 text-red-700 border-red-300';
+            dot = 'bg-red-500';
+        } else if (item.level === 'critical') {
+            lvlStyle = 'bg-red-100 text-red-700 border-red-200'; 
+            dot = 'bg-red-500';
+        } else if (item.level === 'warning') {
+            lvlStyle = 'bg-amber-100 text-amber-700 border-amber-200'; 
+            dot = 'bg-amber-500';
+        }
+        let paramIcon = alt_getIcon(item.parameter, isOffline);
+
+        return `<div class="p-4">
+            <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2">${paramIcon}<span class="font-bold text-gray-900 text-sm">${alt_escapeHtml(item.deviceId)}</span></div>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide flex items-center gap-1 border ${lvlStyle}"><span class="w-1.5 h-1.5 rounded-full ${dot}"></span>${isOffline ? 'CRITICAL' : item.level}</span>
+            </div>
+            <div class="text-xs text-gray-500 mb-2">${alt_escapeHtml(item.location || '-')} • ${alt_escapeHtml(item.duration)}</div>
+            <div class="flex items-center justify-between mb-3">
+                <div><div class="text-xs text-gray-500 uppercase font-bold">Parameter</div><div class="text-sm font-medium text-gray-800 capitalize">${alt_escapeHtml(isOffline ? 'Connection Loss' : item.parameter)}</div></div>
+                <div class="text-right"><div class="text-xs text-gray-500 uppercase font-bold">Peak</div><div class="text-base font-bold ${isOffline ? 'text-red-500' : 'text-gray-900'}">${isOffline ? 'OFFLINE' : `${item.peak}${item.parameter === 'humidity' ? '%' : '°C'}`}</div></div>
+            </div>
+            <div class="text-xs text-gray-500 mb-1">Start: <span class="font-medium text-gray-700">${alt_escapeHtml(item.start)}</span></div>
+            <div class="text-xs text-gray-500 mb-3">End: <span class="font-medium text-gray-700">${alt_escapeHtml(item.end)}</span></div>
+            <div class="border-t border-gray-100 pt-2 space-y-2">
+                <div class="text-xs"><span class="text-gray-500">Ack by:</span> <span class="font-medium text-gray-700">${item.ackBy === 'System' ? 'N/A' : alt_escapeHtml(item.ackBy)}</span>${ackRemarkHtml}</div>
+                <div class="text-xs"><span class="text-gray-500">Res by:</span> <span class="font-medium text-gray-700">${item.resBy === 'System' ? 'N/A' : alt_escapeHtml(item.resBy)}</span>${resRemarkHtml}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    alt_renderHistPagination(filtered.length, totalPages);
+}
 
     function alt_renderHistPagination(total, totalPages) {
         const paginationEl = document.getElementById('alt_hist_pagination');

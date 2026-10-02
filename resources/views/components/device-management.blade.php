@@ -612,19 +612,74 @@
         }
     }
 
+    // ==========================================
+    // BULK DELETE DEVICES
+    // ==========================================
     async function dev_bulkDelete() {
         const count = dev_selectedDevices.size;
-        if (count === 0 || dev_userRole !== 'admin') return;
-        const result = await Swal.fire({ title: `Delete ${count} device${count > 1 ? 's' : ''}?`, text: 'This action cannot be undone.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#E11D48', confirmButtonText: 'Yes, delete all' });
+        if (count === 0) return;
+        
+        if (dev_userRole !== 'admin') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Access Denied',
+                text: 'Only administrators have permission to delete devices.'
+            });
+            return;
+        }
+
+        const result = await Swal.fire({ 
+            title: `Delete ${count} device${count > 1 ? 's' : ''}?`, 
+            html: `<span class="text-sm text-gray-500">This action will permanently remove the selected devices and their associated data. This cannot be undone.</span>`, 
+            icon: 'warning', 
+            showCancelButton: true, 
+            confirmButtonColor: '#dc2626', 
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Yes, delete all' 
+        });
+        
         if (!result.isConfirmed) return;
+
         try {
             const ids = Array.from(dev_selectedDevices);
-            await Promise.all(ids.map(id => fetch(`/api/devices/${id}`, { method: 'DELETE' })));
+            
+            // Lakukan delete satu per satu dan tangkap hasilnya
+            const deletePromises = ids.map(async (id) => {
+                const res = await fetch(`/api/devices/${id}?userRole=${encodeURIComponent(dev_userRole)}`, { 
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                return { 
+                    id: id, 
+                    success: res.ok, 
+                    message: res.ok ? 'Success' : (await res.json().catch(() => ({}))).message || 'Unknown error' 
+                };
+            });
+
+            const results = await Promise.all(deletePromises);
+            const failedDeletes = results.filter(r => !r.success);
+
+            // Refresh data terlebih dahulu
             dev_selectedDevices.clear();
             dev_fetchDevices();
-            dev_showToast(`${count} device${count > 1 ? 's' : ''} deleted successfully`, 'success');
+
+            if (failedDeletes.length === 0) {
+                dev_showToast(`${count} device(s) deleted successfully.`, 'success');
+            } else {
+                // Tampilkan detail device mana yang gagal dihapus
+                const errorDetails = failedDeletes.map(f => `<strong>${f.id}</strong>: ${f.message}`).join('<br>');
+                Swal.fire({
+                    title: 'Partial Deletion Failed',
+                    html: `<p class="text-sm text-gray-700 mb-2">${failedDeletes.length} out of ${count} devices could not be deleted:</p>
+                           <div class="text-sm text-red-600 text-left bg-red-50 p-3 rounded border border-red-100">${errorDetails}</div>`,
+                    icon: 'warning',
+                    confirmButtonColor: '#3b82f6',
+                    confirmButtonText: 'Understood'
+                });
+            }
         } catch (error) {
-            dev_showToast('Failed to delete some devices', 'error');
+            console.error(error);
+            dev_showToast('Network connection failed during bulk deletion.', 'error');
         }
     }
 
@@ -780,28 +835,52 @@
         }
     }
 
+     // ==========================================
+    // DELETE SINGLE DEVICE
+    // ==========================================
     function dev_delete(id) {
         if (dev_userRole !== 'admin') {
             Swal.fire({
                 icon: 'error',
                 title: 'Access Denied',
-                text: 'Only Admin can delete devices.'
+                text: 'Only administrators have permission to delete devices.'
             });
             return;
         }
-        Swal.fire({ title: 'Are you sure?', html: `Delete <strong>${dev_escapeHtml(id)}</strong>? This cannot be undone.`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#E11D48', confirmButtonText: 'Yes, delete!' }).then(async res => {
+
+        Swal.fire({ 
+            title: 'Delete Device?', 
+            html: `Are you sure you want to permanently delete <strong>${dev_escapeHtml(id)}</strong>?<br><span class="text-sm text-gray-500">This action will remove all associated readings, logs, and rules. This cannot be undone.</span>`, 
+            icon: 'warning', 
+            showCancelButton: true, 
+            confirmButtonColor: '#dc2626', // Red-600
+            cancelButtonColor: '#6b7280', // Gray-500
+            confirmButtonText: 'Yes, delete it' 
+        }).then(async (res) => {
             if (res.isConfirmed) {
                 try {
-                    const response = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+                    // TAMBAHKAN ?userRole=... DI URL AGAR BACKEND BISA MEMBACANYA
+                    const response = await fetch(`/api/devices/${id}?userRole=${encodeURIComponent(dev_userRole)}`, { 
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    const data = await response.json();
+
                     if (response.ok) {
                         dev_selectedDevices.delete(id);
                         dev_fetchDevices();
-                        dev_showToast(`${id} has been deleted`, 'success');
+                        dev_showToast(`Device ${id} has been deleted successfully.`, 'success');
+                    } else if (response.status === 403) {
+                        dev_showToast(data.message || 'Access Denied: Only administrators can delete devices.', 'error');
+                    } else if (response.status === 404) {
+                        dev_showToast(data.message || 'Device not found.', 'error');
                     } else {
-                        dev_showToast('Cannot delete device.', 'error');
+                        dev_showToast(data.message || 'Failed to delete device. Please try again.', 'error');
                     }
                 } catch (error) {
-                    dev_showToast('Connection failed.', 'error');
+                    console.error(error);
+                    dev_showToast('Network connection failed. Please check your connection.', 'error');
                 }
             }
         });
